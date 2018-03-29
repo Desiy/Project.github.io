@@ -1,0 +1,6 @@
+﻿  Project Tetris.cpp
+d:\visual studio 2015\projects\project tetris\project tetris\project tetris.cpp(383): warning C4267: 'argument': conversion from 'size_t' to 'int', possible loss of data
+d:\visual studio 2015\projects\project tetris\project tetris\project tetris.cpp(455): warning C4101: 'xpos': unreferenced local variable
+d:\visual studio 2015\projects\project tetris\project tetris\project tetris.cpp(455): warning C4101: 'ypos': unreferenced local variable
+  Project Tetris.vcxproj -> D:\Visual Studio 2015\Projects\Project Tetris\x64\Debug\Project Tetris.exe
+  Project Tetris.vcxproj -> D:\Visual Studio 2015\Projects\Project Tetris\x64\Debug\Project Tetris.pdb (Full PDB)
