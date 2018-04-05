@@ -1,67 +1,85 @@
-#define WIN32_LEAN_AND_MEAN
-
-#include <windows.h>
-#include <winsock2.h>
-#include <ws2tcpip.h>
-#include <stdlib.h>
-#include <stdio.h>
-#include <iostream>
 #include "Client.h"
 
-#pragma comment (lib, "Ws2_32.lib")
-#pragma comment (lib, "Mswsock.lib")
-#pragma comment (lib, "AdvApi32.lib")
 
-
-#define DEFAULT_BUFLEN 512
-#define DEFAULT_PORT 44255
-
-using namespace std;
-
-void Client::startup()
+Client::Client(string IP,int PORT)
 {
 	WSADATA wsaData;
-	SOCKET ConnectSocket = INVALID_SOCKET;
-	sockaddr_in seraddr;
-	char data[DEFAULT_BUFLEN];
-	const char *sendbufptr = data;
-	char recvbuf[DEFAULT_BUFLEN];
-	int iResult;
-	int recvbuflen = DEFAULT_BUFLEN;
 
-	iResult = WSAStartup(MAKEWORD(2, 2), &wsaData);
-	if (iResult != 0) {
-		printf("WSAStartup failed with error: %d\n", iResult);
-		return;
+	if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0) {
+		printf("WSAStartup failed with error: %d\n");
+		exit(0);
 	}
-	while (true) {
-		SOCKET sClient = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-		if (sClient == INVALID_SOCKET) {
-			cout << "Invalid Socket!" << endl;
-			return;
-		}
+	addr.sin_port = htons(PORT);
+	addr.sin_family = AF_INET;
+	addr.sin_addr.s_addr = inet_addr(IP.c_str());
+	clientPtr = this;
+}
 
-		seraddr.sin_port = htons(DEFAULT_PORT);
-		seraddr.sin_family = AF_INET;
-		seraddr.sin_addr.s_addr = inet_addr("127.0.0.1");
+bool Client::Connect()
+{
+	connection = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
 
-		if(connect(sClient, (sockaddr*)&seraddr, sizeof(seraddr)) == SOCKET_ERROR) {
-			cout << "connect failed!" << endl;
-			cout << WSAGetLastError() << endl;
-			closesocket(ConnectSocket);
-			WSACleanup();
-			return;
-		}
-		cin >> data;
-		send(sClient, sendbufptr, strlen(sendbufptr), 0);
-		iResult = recv(sClient, recvbuf, sizeof(recvbuf), 0);
-		if (iResult > 0) {
-			printf(recvbuf);
-		}
-		closesocket(sClient);
+	if (connect(connection,(sockaddr*)&addr,sizeof(addr))!=0) {
+		cout << "connect failed!" << endl;
+		return false;
 	}
-	WSACleanup();
+	cout << "connected!" << endl;
+	CreateThread(NULL, NULL, (LPTHREAD_START_ROUTINE)clientThread, NULL, NULL, NULL);
+	return true;
+}
+
+bool Client::processPacket(packet packettype)
+{
+	switch (packettype)
+	{
+	case P_chatMessage:
+	{
+		string message;
+		if (!getString(message))
+			return false;
+		break;
+	}
+	default:
+		cout << "Unrecognized packet:" << packettype << endl;
+		break;
+	}
+	return true;
+}
+
+
+bool Client::closeConnection()
+{
+	if (closesocket(connection) == SOCKET_ERROR) {
+		if (WSAGetLastError() == WSAENOTSOCK)
+			return true;
+		string errorMessage = "Failed to close the socket.Winsock error:" + to_string(WSAGetLastError())+".";
+		return false;
+	}
+	return true;
+}
+
+void Client::clientThread()
+{
+	packet packetType;
+	while (true)
+	{
+		if (!clientPtr->getPacketType(packetType))
+			break;
+		if (!clientPtr->processPacket(packetType))
+			break;
+	}
+	cout << "Lost connection to server." << endl;
+	if (clientPtr->closeConnection())
+	{
+		cout << "Socket to server was close successfully." << endl;
+	}
+	else
+	{
+		cout << "Socket was unable to close." << endl;
+	}
+}
+
+bool Client::requestFile(string fileName)
+{
 	
-	return;
-
 }

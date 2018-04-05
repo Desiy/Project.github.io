@@ -1,97 +1,93 @@
-﻿#pragma comment (lib, "Ws2_32.lib")
-#undef UNICODE
+﻿#include "Server.h"
 
-#define WIN32_LEAN_AND_MEAN
-#include "Server.h"
-#include <iostream>
-#include <windows.h>
-#include <winsock2.h>
-#include <ws2tcpip.h>
-#include <stdlib.h>
-#include <stdio.h>
 
-using namespace std;
-
-#define DEFAULT_PORT 44255
-#define SOMAXNUM 5
-#define BUFFLEN 215
-
-void Server::startup()
+Server::Server(int serverPORT,bool broadcastPublically)
 {
-	WORD sockVersion = MAKEWORD(2, 2);
+	WORD sockVersion = MAKEWORD(2, 1);
 	WSADATA wsadata;
-	SOCKET slisten = INVALID_SOCKET, sClient = INVALID_SOCKET;
-	sockaddr_in remoteAddr;
-	int	nAddrlen = sizeof(remoteAddr);
-	int iResult = 0;
-	int iSendResult;
-	char revbuf[BUFFLEN];
-	sockaddr_in sin;
+	
 	if (WSAStartup(sockVersion, &wsadata) != 0)
 	{
-		printf("WSAStartup failed with error: %d\n", iResult);
+		printf("WSAStartup failed with error: %d\n");
 		return;
 	}
-	slisten = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-	if (slisten == INVALID_SOCKET)
-	{
-		cout << "socket error" << endl;
-	}
-	cout << "creat socket succeed!" << endl;
 	sin.sin_family = AF_INET;
-	sin.sin_port = htons(DEFAULT_PORT);
-	sin.sin_addr.S_un.S_addr = INADDR_ANY;
+	sin.sin_port = htons(serverPORT);
+	if (broadcastPublically)
+		sin.sin_addr.S_un.S_addr= htonl(INADDR_ANY);
+	else
+		sin.sin_addr.S_un.S_addr = inet_addr("127.0.0.1");
+	slisten = socket(AF_INET, SOCK_STREAM, NULL);
 	if (bind(slisten, (LPSOCKADDR)&sin, sizeof(sin)) == SOCKET_ERROR)
 	{
 		cout << "bind error" << endl;
 		return;
 	}
 	cout << "bind socket succeed!" << endl;
-	if (listen(slisten, SOMAXNUM) == SOCKET_ERROR)
+	if (listen(slisten, SOMAXCONN) == SOCKET_ERROR)
 	{
 		cout << "listening error" << endl;
 		return;
 	}
 	cout << "start listening..." << endl;
-	while (true) {
-		sClient = accept(slisten, (SOCKADDR *)&remoteAddr, &nAddrlen);
-		if (sClient == INVALID_SOCKET)
-		{
-			printf("accept failed with error:%d", WSAGetLastError());
-			continue;
-		}
-		printf("get a connection：%s \r\n", inet_ntoa(remoteAddr.sin_addr));
+	serverPtr = this;
+}
+bool Server::listenForNewConnection()
+{
+	SOCKET newConnection;
+	int connectionCounter = 0;
+	newConnection = accept(slisten, (SOCKADDR *)&sin, &sinlen);
+	if (newConnection == INVALID_SOCKET)
+	{
+		printf("accept failed with error:%d", WSAGetLastError());
+		return false;
+	}
+	else {
+		cout << "Client Connected!" << endl;
+		connections[totalConnections] = newConnection;		
+		CreateThread(NULL, NULL, (LPTHREAD_START_ROUTINE)ClientHandlerThread, (LPVOID)(totalConnections), NULL, NULL);
+		string MOTD = "Welcome!";
+		sendString(totalConnections, MOTD);
+		totalConnections += 1;
+		return true;
+	}
 
-		iResult = recv(sClient, revbuf, BUFFLEN, 0);
-		if (iResult > 0)
-		{
-			printf("Bytes received: %d\n", iResult);
-			iSendResult = send(sClient, revbuf, iResult, 0);
-			if (iSendResult == SOCKET_ERROR) {
-				printf("send failed with error: %d\n", WSAGetLastError());
-				closesocket(sClient);
-				WSACleanup();
-				return;
+}
+
+bool Server::processPacket(int ID,packet packettype)
+{
+	switch (packettype)
+	{
+	case P_chatMessage:
+	{
+		string message;
+		if (!getString(ID, message))
+			return false;
+		for (int i = 0;i < totalConnections;++i) {
+			if (i == ID)
+				continue;
+			if (!sendString(i, message))
+			{
+				cout << "Failed to send message from client ID:" << ID << endl;
 			}
-			printf("Bytes sent: %d\n", iSendResult);
 		}
-		else if (iResult == 0)
-			printf("Connection closing...\n");
-		else {
-			printf("recv failed with error: %d\n", WSAGetLastError());
-			closesocket(sClient);
-			WSACleanup();
-			return;
-		}
+		break;
 	}
-	iResult = shutdown(sClient, SD_SEND);
-	if (iResult == SOCKET_ERROR) {
-		printf("shutdown failed with error: %d\n", WSAGetLastError());
-		closesocket(sClient);
-		WSACleanup();
-		return;
+	default:
+		cout << "Unrecognized packet:" << packettype << endl;
+		break;
 	}
-	closesocket(sClient);
-	WSACleanup();
-	return;
+	return true;
+}
+void Server::ClientHandlerThread(int ID)
+{
+	packet packetType;
+	while (true)
+	{
+		if (!serverPtr->getPacketType(ID, packetType))
+			break;
+		if (!serverPtr->processPacket(ID, packetType))
+			break;
+	}
+	cout << "Lost connection to client:"<< ID << endl;
 }
